@@ -1,0 +1,58 @@
+{
+  "name": "giffer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "desktop": "electron .",
+    "desktop:start": "wait-on http://127.0.0.1:4173 && electron .",
+    "desktop:dev": "concurrently -k \"npm:dev\" \"npm:desktop:start\"",
+    "desktop:build": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false&& electron-builder",
+    "package:all": "node scripts/package-all.mjs"
+  },
+  "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "gifenc": "^1.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.2.1",
+    "electron": "^41.3.0",
+    "electron-builder": "^26.8.1",
+    "vite": "^5.4.10",
+    "wait-on": "^9.0.5"
+  },
+  "build": {
+    "appId": "co.gifmaker.desktop",
+    "productName": "Giffer",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release/builder"
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false,
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
