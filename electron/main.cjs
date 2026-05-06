@@ -3,6 +3,7 @@ const fs = require('node:fs/promises');
 const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 
 const DEV_URL = 'http://127.0.0.1:4173/';
+const APP_ICON_PATH = path.join(__dirname, 'assets', 'giffer.ico');
 
 const MIME_BY_EXTENSION = {
   '.bmp': 'image/bmp',
@@ -30,6 +31,7 @@ function createMainWindow() {
     backgroundColor: '#f4f6f8',
     autoHideMenuBar: true,
     title: 'Giffer',
+    icon: APP_ICON_PATH,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "icons:generate": "node scripts/generate-icons.mjs",
     "desktop": "electron .",
     "desktop:start": "wait-on http://127.0.0.1:4173 && electron .",
     "desktop:dev": "concurrently -k \"npm:dev\" \"npm:desktop:start\"",
@@ -27,12 +28,15 @@
     "concurrently": "^9.2.1",
     "electron": "^41.3.0",
     "electron-builder": "^26.8.1",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5",
     "vite": "^5.4.10",
     "wait-on": "^9.0.5"
   },
   "build": {
     "appId": "co.gifmaker.desktop",
     "productName": "Giffer",
+    "icon": "electron/assets/giffer.ico",
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -42,6 +46,7 @@
       "output": "release/builder"
     },
     "win": {
+      "icon": "electron/assets/giffer.ico",
       "signAndEditExecutable": false,
       "verifyUpdateCodeSignature": false,
       "target": [
@@ -52,7 +57,10 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "electron/assets/giffer.ico",
+      "uninstallerIcon": "electron/assets/giffer.ico",
+      "installerHeaderIcon": "electron/assets/giffer.ico"
     }
   }
 }

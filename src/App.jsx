@@ -8,6 +8,7 @@ import { GIFEncoder, applyPalette, quantize } from 'gifenc';
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/bmp'];
 const ACCEPTED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-m4v'];
 const MIN_DELAY = 20;
+const MAX_DELAY = 1000;
 const MIN_STEP = 1;
 const MIN_MOV_FPS = 1;
 const MIN_LONG_EDGE = 240;
@@ -17,7 +18,9 @@ const MIN_SCALE = 0.25;
 const MAX_SCALE = 4;
 const PREVIEW_CANVAS_WIDTH = 1280;
 const PREVIEW_CANVAS_HEIGHT = 860;
+const PREVIEW_SOURCE_MAX_LONG_EDGE = 1600;
 const desktopApi = window.gifMakerDesktop ?? null;
+const loadedImageCache = new Map();
 const CRC32_TABLE = new Uint32Array(256).map((_, index) => {
   let current = index;
 
@@ -128,12 +131,23 @@ function clampFrameRect(rect) {
 }
 
 function loadImageElement(url) {
-  return new Promise((resolve, reject) => {
+  if (loadedImageCache.has(url)) {
+    return loadedImageCache.get(url);
+  }
+
+  const imagePromise = new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
     image.onerror = reject;
     image.src = url;
   });
+
+  loadedImageCache.set(url, imagePromise);
+  return imagePromise;
+}
+
+function releaseLoadedImage(url) {
+  loadedImageCache.delete(url);
 }
 
 function readBlobAsDataUrl(blob) {
@@ -314,44 +328,78 @@ function buildZipBlob(files) {
 
 function releaseFrame(frame) {
   frame.revoke?.();
+  releaseLoadedImage(frame.previewUrl ?? frame.url);
+  releaseLoadedImage(frame.sourceUrl ?? frame.url);
 }
 
 function releaseFrames(items) {
   items.forEach(releaseFrame);
 }
 
-function normalizeFrameItem(item, index) {
-  if ('path' in item && !('dataUrl' in item)) {
+async function createPreviewAssetUrl(sourceUrl) {
+  const image = await loadImageElement(sourceUrl);
+  const longEdge = Math.max(image.naturalWidth, image.naturalHeight);
+
+  if (longEdge <= PREVIEW_SOURCE_MAX_LONG_EDGE) {
     return {
-      id: `${item.name}-${item.path}-${index}-${Date.now()}`,
-      name: item.name,
-      size: item.size,
-      type: item.type,
-      url: filePathToUrl(item.path),
-      revoke: () => {},
+      previewUrl: sourceUrl,
+      revokePreview: () => {},
     };
   }
 
-  if ('dataUrl' in item) {
+  const scale = PREVIEW_SOURCE_MAX_LONG_EDGE / longEdge;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+  const context = getCanvasContext(canvas);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+
+  if (!blob) {
     return {
-      id: `${item.name}-${item.path ?? 'desktop'}-${index}-${Date.now()}`,
-      name: item.name,
-      size: item.size,
-      type: item.type,
-      url: item.dataUrl,
-      revoke: () => {},
+      previewUrl: sourceUrl,
+      revokePreview: () => {},
     };
   }
 
-  const objectUrl = URL.createObjectURL(item);
+  const previewObjectUrl = URL.createObjectURL(blob);
 
   return {
-    id: `${item.name}-${item.lastModified}-${index}-${Date.now()}`,
+    previewUrl: previewObjectUrl,
+    revokePreview: () => URL.revokeObjectURL(previewObjectUrl),
+  };
+}
+
+async function normalizeFrameItem(item, index) {
+  const revokeCallbacks = [];
+  let sourceUrl = '';
+
+  if ('path' in item && !('dataUrl' in item)) {
+    sourceUrl = filePathToUrl(item.path);
+  } else if ('dataUrl' in item) {
+    sourceUrl = item.dataUrl;
+  } else {
+    sourceUrl = URL.createObjectURL(item);
+    revokeCallbacks.push(() => URL.revokeObjectURL(sourceUrl));
+  }
+
+  const { previewUrl, revokePreview } = await createPreviewAssetUrl(sourceUrl);
+
+  if (previewUrl !== sourceUrl) {
+    revokeCallbacks.push(revokePreview);
+  }
+
+  return {
+    id: `${item.name}-${item.path ?? item.lastModified ?? 'local'}-${index}-${Date.now()}`,
     name: item.name,
     size: item.size,
     type: item.type,
-    url: objectUrl,
-    revoke: () => URL.revokeObjectURL(objectUrl),
+    url: previewUrl,
+    previewUrl,
+    sourceUrl,
+    revoke: () => revokeCallbacks.forEach((callback) => callback()),
   };
 }
 
@@ -364,7 +412,7 @@ async function buildExportLayout(items, outputSizeMode, outputLongEdge) {
   const loadedFrames = await Promise.all(
     items.map(async (item) => ({
       item,
-      image: await loadImageElement(item.url),
+      image: await loadImageElement(item.sourceUrl ?? item.url),
     })),
   );
   const maxWidth = Math.max(...loadedFrames.map(({ image }) => image.naturalWidth));
@@ -775,28 +823,29 @@ function App() {
   };
 
   const replaceFrames = (items, nextStatus) => {
-    releaseFrames(framesRef.current);
-    const nextFrames = items.map(normalizeFrameItem);
+    return Promise.all(items.map(normalizeFrameItem)).then((nextFrames) => {
+      releaseFrames(framesRef.current);
 
-    setFrames(nextFrames);
-    setSelectedId(nextFrames[0]?.id ?? null);
-    setPreviewIndex(0);
-    setIsPlaying(true);
-    setStatusText(nextStatus ?? `${nextFrames.length} kare eklendi.`);
-    resetViewport();
+      setFrames(nextFrames);
+      setSelectedId(nextFrames[0]?.id ?? null);
+      setPreviewIndex(0);
+      setIsPlaying(true);
+      setStatusText(nextStatus ?? `${nextFrames.length} kare eklendi.`);
+      resetViewport();
+    });
   };
 
   const appendFrames = (items, nextStatus) => {
-    const nextFrames = items.map(normalizeFrameItem);
-
-    setFrames((current) => [...current, ...nextFrames]);
-    setSelectedId((currentSelectedId) => currentSelectedId ?? nextFrames[0]?.id ?? null);
-    setPreviewIndex(0);
-    setIsPlaying(true);
-    setStatusText(nextStatus ?? `${nextFrames.length} kare eklendi.`);
+    return Promise.all(items.map(normalizeFrameItem)).then((nextFrames) => {
+      setFrames((current) => [...current, ...nextFrames]);
+      setSelectedId((currentSelectedId) => currentSelectedId ?? nextFrames[0]?.id ?? null);
+      setPreviewIndex(0);
+      setIsPlaying(true);
+      setStatusText(nextStatus ?? `${nextFrames.length} kare eklendi.`);
+    });
   };
 
-  const handleImageSelection = (items) => {
+  const handleImageSelection = async (items) => {
     const filteredItems = items
       .filter((item) => ACCEPTED_IMAGE_TYPES.includes(item.type) || item.type.startsWith('image/'))
       .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true }));
@@ -807,7 +856,8 @@ function App() {
     }
 
     releaseVideoSource();
-    appendFrames(filteredItems);
+    setStatusText('Gorseller preview icin optimize ediliyor...');
+    await appendFrames(filteredItems);
   };
 
   const extractVideoFrames = async (videoItem) => {
@@ -875,7 +925,7 @@ function App() {
 
     try {
       const extractedFrames = await extractVideoFrames(videoItem);
-      replaceFrames(extractedFrames, `${extractedFrames.length} kare videodan cikartildi.`);
+      await replaceFrames(extractedFrames, `${extractedFrames.length} kare videodan cikartildi.`);
     } catch (error) {
       setStatusText(`Video import hatasi: ${error.message}`);
       console.error(error);
@@ -890,7 +940,7 @@ function App() {
     if (inputMode === 'video') {
       await handleVideoSelection(pickedFiles);
     } else {
-      handleImageSelection(pickedFiles);
+      await handleImageSelection(pickedFiles);
     }
 
     event.target.value = '';
@@ -911,7 +961,7 @@ function App() {
     if (inputMode === 'video') {
       await handleVideoSelection(pickedFiles);
     } else {
-      handleImageSelection(pickedFiles);
+      await handleImageSelection(pickedFiles);
     }
   };
 
@@ -925,7 +975,7 @@ function App() {
   };
 
   const commitDelayInput = () => {
-    const nextDelay = clampNumber(delayInput, delayMs, MIN_DELAY);
+    const nextDelay = clampNumber(delayInput, delayMs, MIN_DELAY, MAX_DELAY);
     setDelayMs(nextDelay);
     setDelayInput(String(nextDelay));
   };
@@ -1213,7 +1263,7 @@ function App() {
     try {
       const zipFiles = await Promise.all(
         visibleFrames.map(async (frame, index) => {
-          const response = await fetch(frame.url);
+          const response = await fetch(frame.sourceUrl ?? frame.url);
           const buffer = await response.arrayBuffer();
           const extension = getFileExtension(frame.name) || '.png';
 
@@ -1374,6 +1424,7 @@ function App() {
             className="text-field"
             type="number"
             min={MIN_DELAY}
+            max={MAX_DELAY}
             value={delayInput}
             onChange={(event) => setDelayInput(event.target.value)}
             onBlur={commitDelayInput}
@@ -1381,6 +1432,19 @@ function App() {
               if (event.key === 'Enter') {
                 commitDelayInput();
               }
+            }}
+          />
+          <input
+            className="timeline-slider"
+            type="range"
+            min={MIN_DELAY}
+            max={MAX_DELAY}
+            step="1"
+            value={delayMs}
+            onChange={(event) => {
+              const nextDelay = clampNumber(event.target.value, delayMs, MIN_DELAY, MAX_DELAY);
+              setDelayMs(nextDelay);
+              setDelayInput(String(nextDelay));
             }}
           />
 
