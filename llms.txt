@@ -1,0 +1,33 @@
+Giffer
+
+Free open-source creative tool by Ali Guzel / YCSWU.
+
+Purpose:
+- Convert image sequences or a single video into GIF or MOV.
+
+Type:
+- Hybrid web app and Windows desktop app.
+
+Inputs:
+- PNG
+- JPEG
+- WEBP
+- BMP
+- MP4
+- MOV
+- WEBM
+- M4V
+
+Outputs:
+- GIF
+- MOV
+- ZIP of visible video frames
+
+Repository:
+- https://github.com/aliguzel996/giffer
+
+Releases:
+- https://github.com/aliguzel996/giffer/releases/latest
+
+Notes:
+- Current local build outputs live under `release/web`, `release/windows`, and `release/itch`.

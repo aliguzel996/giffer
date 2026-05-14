@@ -8,6 +8,7 @@ const builderDir = path.join(releaseRootDir, 'builder');
 const webDir = path.join(releaseRootDir, 'web');
 const windowsDir = path.join(releaseRootDir, 'windows');
 const itchDir = path.join(releaseRootDir, 'itch');
+const rootMetadataFiles = ['app.manifest.json', 'AI.md', 'CHANGELOG.md', 'llms.txt'];
 const releaseLegacyEntries = ['win-unpacked', 'builder-debug.yml', 'Giffer 0.1.0.exe', 'Giffer Setup 0.1.0.exe', 'Giffer Setup 0.1.0.exe.blockmap'];
 const rootLegacyDirs = ['web', 'windows', 'itch', 'web app', 'windows app', 'itch build'].map((dirName) =>
   path.join(rootDir, dirName),
@@ -75,6 +76,8 @@ async function main() {
   await Promise.all([resetDirectory(webDir), resetDirectory(windowsDir), resetDirectory(itchDir)]);
 
   await copyDirectoryContents(distDir, webDir);
+  await Promise.all(rootMetadataFiles.map((fileName) => copyNamedFile(path.join(rootDir, fileName), path.join(webDir, fileName))));
+  await cp(path.join(rootDir, 'metadata'), path.join(webDir, 'metadata'), { recursive: true, force: true });
   await copyNamedFile(path.join(builderDir, 'Giffer 0.1.0.exe'), path.join(windowsDir, 'Giffer.exe'));
   await copyNamedFile(path.join(builderDir, 'Giffer Setup 0.1.0.exe'), path.join(itchDir, 'Giffer Setup.exe'));
   await safeRemove(builderDir);

@@ -1,0 +1,68 @@
+{
+  "id": "ycswu.giffer",
+  "name": "Giffer",
+  "version": "0.1.0",
+  "shortDescription": "Free open-source tool for turning image sequences or a single video into GIF or MOV with live preview and frame controls.",
+  "aiDescription": "Giffer is a hybrid web and desktop creative tool from YCSWU for converting image sequences or a single video into GIF or MOV. It supports frame reordering, delay control, frame skipping, live preview, crop and frame presets, transform controls, PNG stacking, video trim, ZIP export of extracted video frames, and Windows desktop packaging.",
+  "category": "Creative Tool",
+  "creator": "Ali Guzel",
+  "publisher": "YCSWU",
+  "license": "Open source",
+  "website": "",
+  "github": "https://github.com/aliguzel996/giffer",
+  "releaseApiUrl": "https://api.github.com/repos/aliguzel996/giffer/releases/latest",
+  "latestReleaseUrl": "https://github.com/aliguzel996/giffer/releases/latest",
+  "downloadUrls": {
+    "windows": "",
+    "mac": "",
+    "linux": ""
+  },
+  "keywords": [
+    "gif",
+    "mov",
+    "image-sequence",
+    "video",
+    "frame-editing",
+    "creative-tool"
+  ],
+  "useCases": [
+    "Turn image sequences into GIF or MOV",
+    "Convert a single video into a frame-based GIF workflow",
+    "Crop and frame short motion assets for square, landscape, or vertical output",
+    "Export extracted video frames as ZIP for manual review"
+  ],
+  "notFor": [
+    "Long-form video editing",
+    "Timeline-based audio editing",
+    "3D animation",
+    "Cloud batch rendering"
+  ],
+  "inputFormats": [
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/bmp",
+    "video/mp4",
+    "video/quicktime",
+    "video/webm",
+    "video/x-m4v"
+  ],
+  "outputFormats": [
+    "image/gif",
+    "video/quicktime",
+    "application/zip"
+  ],
+  "systemRequirements": [
+    "Modern browser with WebAssembly support for the web build",
+    "Windows 10 or later for the packaged desktop build",
+    "Enough memory for large image sequences or ffmpeg-based video extraction"
+  ],
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "date": "2026-05-10",
+      "summary": "Current public codebase with web and Windows builds, live preview, image and video import, frame controls, crop and frame tools, ZIP export, branding, drag-reorder, and mirror loop."
+    }
+  ],
+  "updatedAt": "2026-05-10"
+}

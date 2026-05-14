@@ -1,5 +1,15 @@
 # Giffer
 
+## Tool Summary
+
+Giffer is a free open-source creative tool for turning image sequences or a single video into GIF or MOV without timeline-heavy video editing.
+
+- Use it to import images or one video, preview the result, reorder frames, crop/frame the output, and export GIF or MOV.
+- Source code lives here: `https://github.com/aliguzel996/giffer`
+- Expected public release page: `https://github.com/aliguzel996/giffer/releases/latest`
+- Local build outputs live under `release/web`, `release/windows`, and `release/itch`
+- Machine-readable project metadata lives in `app.manifest.json`, `metadata/`, `AI.md`, `CHANGELOG.md`, and `llms.txt`
+
 ## English
 
 ### Short Description

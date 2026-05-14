@@ -45,6 +45,20 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function moveFrameByIds(items, sourceId, targetId) {
+  const sourceIndex = items.findIndex((item) => item.id === sourceId);
+  const targetIndex = items.findIndex((item) => item.id === targetId);
+
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return items;
+  }
+
+  const nextItems = [...items];
+  const [movedItem] = nextItems.splice(sourceIndex, 1);
+  nextItems.splice(targetIndex, 0, movedItem);
+  return nextItems;
+}
+
 function fitRect(sourceWidth, sourceHeight, targetWidth, targetHeight) {
   const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight);
   const width = Math.max(1, Math.round(sourceWidth * scale));
@@ -512,6 +526,7 @@ function App() {
   const [previewBackground, setPreviewBackground] = useState('#f4f6f8');
   const [transparentBackground, setTransparentBackground] = useState(false);
   const [stackFrames, setStackFrames] = useState(false);
+  const [mirrorLoop, setMirrorLoop] = useState(false);
   const [sceneTransform, setSceneTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [transformMode, setTransformMode] = useState(false);
   const [showOutsideFrame, setShowOutsideFrame] = useState(false);
@@ -519,6 +534,8 @@ function App() {
   const [cropMode, setCropMode] = useState(false);
   const [framePreset, setFramePreset] = useState('none');
   const [outputFrame, setOutputFrame] = useState(null);
+  const [draggedFrameId, setDraggedFrameId] = useState(null);
+  const [dropTargetFrameId, setDropTargetFrameId] = useState(null);
 
   const trimmedFrames = useMemo(() => {
     if (inputMode !== 'video' || !frames.length) {
@@ -536,6 +553,14 @@ function App() {
     return trimmedFrames.filter((_, index) => index % frameStep === 0);
   }, [trimmedFrames, frameStep]);
 
+  const playbackFrames = useMemo(() => {
+    if (inputMode !== 'images' || !mirrorLoop || visibleFrames.length < 3) {
+      return visibleFrames;
+    }
+
+    return [...visibleFrames, ...visibleFrames.slice(1, -1).reverse()];
+  }, [inputMode, mirrorLoop, visibleFrames]);
+
   const stackDisabled = useMemo(() => {
     return frames.some((frame) => frame.type === 'image/jpeg');
   }, [frames]);
@@ -545,7 +570,9 @@ function App() {
   const importAccept = inputMode === 'video' ? 'video/*,.mp4,.mov,.webm,.m4v' : 'image/*';
   const previewFps = Math.max(1, Math.round(1000 / delayMs));
   const exportDuration =
-    outputFormat === 'mov' ? visibleFrames.length / Math.max(MIN_MOV_FPS, movFps) : (visibleFrames.length * delayMs) / 1000;
+    outputFormat === 'mov'
+      ? playbackFrames.length / Math.max(MIN_MOV_FPS, movFps)
+      : (playbackFrames.length * delayMs) / 1000;
 
   useEffect(() => {
     framesRef.current = frames;
@@ -580,6 +607,16 @@ function App() {
       setSelectedId(frames[0].id);
     }
   }, [frames, selectedId]);
+
+  useEffect(() => {
+    if (draggedFrameId && !frames.some((frame) => frame.id === draggedFrameId)) {
+      setDraggedFrameId(null);
+    }
+
+    if (dropTargetFrameId && !frames.some((frame) => frame.id === dropTargetFrameId)) {
+      setDropTargetFrameId(null);
+    }
+  }, [draggedFrameId, dropTargetFrameId, frames]);
 
   useEffect(() => {
     if (inputMode !== 'video') {
@@ -617,7 +654,7 @@ function App() {
   }, [delayMs, frameStep, inputMode, trimEndTime, trimStartTime, videoCurrentTime, visibleFrames.length]);
 
   useEffect(() => {
-    if (!visibleFrames.length) {
+    if (!playbackFrames.length) {
       const canvas = previewCanvasRef.current;
 
       if (canvas) {
@@ -631,17 +668,17 @@ function App() {
     let cancelled = false;
 
     const renderPreview = async (currentIndex) => {
-      if (!canvas || visibleFrames.length === 0) {
+      if (!canvas || playbackFrames.length === 0) {
         return;
       }
 
-      const normalizedIndex = clamp(currentIndex, 0, visibleFrames.length - 1);
-      const itemsToDraw = stackFrames ? visibleFrames.slice(0, normalizedIndex + 1) : [visibleFrames[normalizedIndex]];
+      const normalizedIndex = clamp(currentIndex, 0, playbackFrames.length - 1);
+      const itemsToDraw = stackFrames ? playbackFrames.slice(0, normalizedIndex + 1) : [playbackFrames[normalizedIndex]];
 
       await renderPreviewFrame(itemsToDraw, canvas, sceneTransform, previewBackground, transparentBackground);
 
       if (!cancelled) {
-        setSelectedId(visibleFrames[normalizedIndex].id);
+        setSelectedId(playbackFrames[normalizedIndex].id);
       }
     };
 
@@ -651,9 +688,9 @@ function App() {
       window.clearInterval(previewTimerRef.current);
     }
 
-    if (isPlaying && visibleFrames.length > 1 && (inputMode === 'images' || (inputMode === 'video' && !isOriginalVideoPlaying))) {
+    if (isPlaying && playbackFrames.length > 1 && (inputMode === 'images' || (inputMode === 'video' && !isOriginalVideoPlaying))) {
       previewTimerRef.current = window.setInterval(() => {
-        setPreviewIndex((current) => (current + 1) % visibleFrames.length);
+        setPreviewIndex((current) => (current + 1) % playbackFrames.length);
       }, delayMs);
     }
 
@@ -674,7 +711,7 @@ function App() {
     sceneTransform,
     stackFrames,
     transparentBackground,
-    visibleFrames,
+    playbackFrames,
     isOriginalVideoPlaying,
   ]);
 
@@ -1032,6 +1069,71 @@ function App() {
     }
   };
 
+  const clearThumbDragState = () => {
+    setDraggedFrameId(null);
+    setDropTargetFrameId(null);
+  };
+
+  const reorderVisibleFrames = (sourceId, targetId) => {
+    if (!sourceId || !targetId || sourceId === targetId) {
+      clearThumbDragState();
+      return;
+    }
+
+    setFrames((current) => {
+      const nextFrames = moveFrameByIds(current, sourceId, targetId);
+
+      if (nextFrames === current) {
+        return current;
+      }
+
+      const focusId = selectedId && nextFrames.some((frame) => frame.id === selectedId) ? selectedId : sourceId;
+      const nextVisibleFrames = nextFrames.filter((_, index) => index % frameStep === 0);
+      const nextVisibleIndex = nextVisibleFrames.findIndex((frame) => frame.id === focusId);
+
+      setSelectedId(focusId);
+
+      if (nextVisibleIndex >= 0) {
+        setPreviewIndex(nextVisibleIndex);
+      }
+
+      setStatusText('Kare sirasi guncellendi.');
+      return nextFrames;
+    });
+
+    clearThumbDragState();
+  };
+
+  const handleThumbDragStart = (frameId, event) => {
+    if (visibleFrames.length < 2) {
+      return;
+    }
+
+    setDraggedFrameId(frameId);
+    setDropTargetFrameId(frameId);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', frameId);
+  };
+
+  const handleThumbDragOver = (frameId, event) => {
+    if (!draggedFrameId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+
+    if (frameId !== draggedFrameId && dropTargetFrameId !== frameId) {
+      setDropTargetFrameId(frameId);
+    }
+  };
+
+  const handleThumbDrop = (targetId, event) => {
+    event.preventDefault();
+    const sourceId = draggedFrameId || event.dataTransfer.getData('text/plain');
+    reorderVisibleFrames(sourceId, targetId);
+  };
+
   const handleVideoPlay = async () => {
     const video = originalVideoRef.current;
 
@@ -1235,7 +1337,7 @@ function App() {
     setStatusText(`${outputFormat.toUpperCase()} hazirlaniyor...`);
 
     try {
-      const result = outputFormat === 'gif' ? await exportGif(visibleFrames) : await exportMov(visibleFrames);
+      const result = outputFormat === 'gif' ? await exportGif(playbackFrames) : await exportMov(playbackFrames);
 
       if (result?.canceled) {
         setStatusText('Kaydetme iptal edildi.');
@@ -1479,6 +1581,17 @@ function App() {
               : "PNG'leri ust uste cizer, arkadaki kareyi kaybetmez."}
           </p>
 
+          {inputMode === 'images' ? (
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={mirrorLoop}
+                onChange={(event) => setMirrorLoop(event.target.checked)}
+              />
+              <span>Mirror Loop</span>
+            </label>
+          ) : null}
+
           <div className="double-actions">
             <button className="primary-button" onClick={handlePreviewToggle} disabled={isBusy}>
               {isPlaying ? 'Pause Preview' : 'Continue Preview'}
@@ -1575,7 +1688,7 @@ function App() {
           </div>
           <div className="stat-row">
             <span>Kullanilan kare</span>
-            <strong>{visibleFrames.length}</strong>
+            <strong>{playbackFrames.length}</strong>
           </div>
           <div className="stat-row">
             <span>Preview FPS</span>
@@ -1600,7 +1713,7 @@ function App() {
 
       <main className="workspace">
         <div className="topbar">
-          <div className="topbar-status">{visibleFrames.length} active frames</div>
+          <div className="topbar-status">{playbackFrames.length} active frames</div>
           <div className="topbar-metric">
             <span>Delay</span>
             <strong>{delayMs} ms</strong>
@@ -1860,7 +1973,12 @@ function App() {
               {visibleFrames.map((frame, index) => (
                 <div
                   key={frame.id}
-                  className={`thumb-card ${selectedId === frame.id ? 'is-active' : ''}`}
+                  className={`thumb-card ${selectedId === frame.id ? 'is-active' : ''} ${visibleFrames.length > 1 ? 'is-draggable' : ''} ${draggedFrameId === frame.id ? 'is-dragging' : ''} ${dropTargetFrameId === frame.id && draggedFrameId !== frame.id ? 'is-drop-target' : ''}`}
+                  draggable={visibleFrames.length > 1}
+                  onDragStart={(event) => handleThumbDragStart(frame.id, event)}
+                  onDragOver={(event) => handleThumbDragOver(frame.id, event)}
+                  onDrop={(event) => handleThumbDrop(frame.id, event)}
+                  onDragEnd={clearThumbDragState}
                 >
                   <button
                     className="thumb-remove"

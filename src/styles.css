@@ -591,6 +591,20 @@ button {
   padding: 8px;
 }
 
+.thumb-card.is-draggable {
+  cursor: grab;
+}
+
+.thumb-card.is-dragging {
+  opacity: 0.42;
+  cursor: grabbing;
+}
+
+.thumb-card.is-drop-target {
+  outline: 1px dashed var(--border-strong);
+  outline-offset: 2px;
+}
+
 .thumb-card-select {
   width: 100%;
   border: none;
